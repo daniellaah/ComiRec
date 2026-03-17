@@ -1,0 +1,15 @@
+[project]
+name = "comirec-autoresearch"
+version = "0.1.0"
+description = "Minimal ComiRec-SA training repo"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "torch==2.7.*",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "ruff>=0.15.6",
+]

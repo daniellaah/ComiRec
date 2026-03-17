@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+
+# data files
+data/amazon_books/
+data/processed/
+
+# Experiment artifacts
+best_model/
+tmp/
