@@ -38,14 +38,14 @@ TEST_MAX_USERS: int | None = 4096
 # ---------------------------------------------------------------------------
 
 # Run
-RUN_NAME = "comirec_sa_i8"
+RUN_NAME = "comirec_sa_i8_h32"
 WARMUP_STEPS = 5
 MAX_STEPS = 1_000_000
 LOG_EVERY = 20
 
 # Model architecture
 EMBEDDING_DIM = 64
-HIDDEN_SIZE = 64
+HIDDEN_SIZE = 32
 NUM_INTERESTS = 8
 
 # Optimization
