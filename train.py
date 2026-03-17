@@ -38,7 +38,7 @@ TEST_MAX_USERS: int | None = 4096
 # ---------------------------------------------------------------------------
 
 # Run
-RUN_NAME = "run_10m_i8_h32_b64_lr5e4"
+RUN_NAME = "run_10m_i8_h32_b48_lr5e4"
 WARMUP_STEPS = 5
 MAX_STEPS = 1_000_000
 LOG_EVERY = 20
@@ -49,7 +49,7 @@ HIDDEN_SIZE = 32
 NUM_INTERESTS = 8
 
 # Optimization
-BATCH_SIZE = 64
+BATCH_SIZE = 48
 LEARNING_RATE = 5e-4
 
 # Output
