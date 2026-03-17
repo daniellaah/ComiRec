@@ -38,7 +38,7 @@ TEST_MAX_USERS: int | None = 4096
 # ---------------------------------------------------------------------------
 
 # Run
-RUN_NAME = "comirec_sa"
+RUN_NAME = "baseline_10m_i8_h32_b64_lr6e4"
 WARMUP_STEPS = 5
 MAX_STEPS = 1_000_000
 LOG_EVERY = 20
