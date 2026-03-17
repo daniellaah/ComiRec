@@ -38,7 +38,7 @@ Each experiment runs on `mps`. The training script runs for a **fixed time budge
 - Modify the evaluation harness or prepared data protocol. The `evaluate_ndcg50` function in `prepare.py` is the ground truth evaluation entry point.
 - Modify the stable infrastructure section at the top of `train.py`. Data paths, seed, device, training time budget, and evaluation protocol must stay fixed so runs remain comparable.
 
-**The goal is simple: get the highest `valid_ndcg@50`.** This is the one primary metric used for autoresearch comparisons. `Recall@50` and `HitRate@50` may still be logged for context, but keep/discard decisions should be based on validation NDCG under the same 5-minute budget. The only constraint is that the code runs without crashing and finishes within the time budget.
+**The goal is simple: get the highest `valid_ndcg50`.** This is the one primary metric used for autoresearch comparisons. Keep/discard decisions should be based only on validation NDCG under the same 5-minute budget. The only constraint is that the code runs without crashing and finishes within the time budget.
 
 **Memory** is a soft constraint. Some increase is acceptable for meaningful NDCG gains, but it should not blow up dramatically or make the run unstable on the current machine.
 

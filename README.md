@@ -1,71 +1,76 @@
-# ComiRec Autoresearch
+# autoresearch
 
-Minimal PyTorch repo for learning recommender-system training with:
+This repository is a minimal `autoresearch`-style experiment for recommender systems.
+
+The current fixed setup is:
 
 - dataset: Amazon Books
-- model: `ComiRec-SA`
-- loss: in-batch negatives
+- model family: `ComiRec-SA`
+- training loss: in-batch negatives
 - readout: hard
-- device default: `mps -> cuda -> cpu`
+- primary metric: `valid_ndcg50`
+- device protocol: `mps`
+- time budget: 5 minutes per run
 
-Files that matter:
+The repository is intentionally small:
 
 - `prepare.py`
+  - fixed data preparation
+  - final dataset generation
+  - dataloading
+  - checkpoint helpers
+  - evaluation via `evaluate_ndcg50`
+  - treat this file as stable infrastructure
 - `train.py`
+  - the main experiment file
+  - model architecture
+  - optimizer
+  - training loop
+  - the hyperparameter block at the top is the main place to edit
 - `program.md`
+  - instructions for an autonomous research agent
 - `pyproject.toml`
+  - dependencies only
 
-Prepare final datasets:
+## Prepare
+
+Prepare the final datasets:
 
 ```bash
 uv run python prepare.py
 ```
 
-This writes stable experiment inputs to `data/processed/`:
+This writes the fixed experiment inputs to `data/processed/`:
 
 - `train.jsonl`
 - `valid.jsonl`
 - `test.jsonl`
 - `metadata.json`
+- `book_item_map.txt`
 
-Current training-data policy:
+Training data is fixed across runs:
 
-- each training user contributes exactly one fixed training sample
-- the cutoff is sampled once in `prepare.py` with a fixed seed
-- training data is therefore stable across runs
+- each training user contributes one fixed training sample
+- the cutoff is chosen once in `prepare.py`
+- the seed is fixed
 
-Train:
+## Train
+
+Run one experiment:
 
 ```bash
 uv run python train.py
 ```
 
-`train.py` now follows the `autoresearch` pattern:
+The training script follows the `autoresearch` pattern:
 
-- edit the config block at the top of the file
-- train for a fixed wall-clock budget
-- run one standardized validation pass at the end
-- append one structured run record to `tmp/runs.jsonl`
-- keep data paths and prepared-data-dependent settings outside the editable block
-- keep seed, device, time budget, and evaluation protocol fixed across runs
+- edit `train.py`
+- run for a fixed 5-minute budget
+- compare runs using `valid_ndcg50`
+- write a checkpoint to `best_model/`
+- append a structured run record to `tmp/runs.jsonl`
 
-Important training knobs now include:
+The key rule is:
 
-- `RUN_NAME`
-- `WARMUP_STEPS`
-- `BATCH_SIZE`
-- `LEARNING_RATE`
-- `CHECKPOINT_PATH`
-
-Not experiment knobs:
-
-- dataset paths
-- `maxlen`
-- `topk`
-- seed
-- device
-- train time budget
-- validation/test user caps
-- evaluation batch size
-
-These are treated as stable infrastructure and fixed as part of the project protocol.
+- `prepare.py` defines the fixed protocol
+- `train.py` is where experiments happen
