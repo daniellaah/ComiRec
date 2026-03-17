@@ -16,3 +16,4 @@ data/processed/
 best_model/
 tmp/
 results.tsv
+run.log
