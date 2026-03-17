@@ -285,7 +285,7 @@ def main() -> None:
     synchronize_device(device)
     training_finished_at = utc_now_iso()
 
-    valid_metrics = prepare.evaluate_full_ranking(
+    valid_ndcg50 = prepare.evaluate_ndcg50(
         model=model,
         samples_path=VALID_DATA,
         batch_size=EVAL_BATCH_SIZE,
@@ -293,15 +293,12 @@ def main() -> None:
         device=device,
         max_users=VALID_MAX_USERS,
     )
-    print(
-        f"valid_recall={valid_metrics['recall']:.6f} "
-        f"valid_ndcg={valid_metrics['ndcg']:.6f} "
-        f"valid_hitrate={valid_metrics['hitrate']:.6f}"
-    )
+    best_metric = float(valid_ndcg50)
+    print(f"valid_ndcg50={valid_ndcg50:.6f}")
 
-    test_metrics: dict[str, float] | None = None
+    test_ndcg50: float | None = None
     if RUN_TEST_EVAL:
-        test_metrics = prepare.evaluate_full_ranking(
+        test_ndcg50 = prepare.evaluate_ndcg50(
             model=model,
             samples_path=TEST_DATA,
             batch_size=EVAL_BATCH_SIZE,
@@ -309,18 +306,14 @@ def main() -> None:
             device=device,
             max_users=TEST_MAX_USERS,
         )
-        print(
-            f"test_recall={test_metrics['recall']:.6f} "
-            f"test_ndcg={test_metrics['ndcg']:.6f} "
-            f"test_hitrate={test_metrics['hitrate']:.6f}"
-        )
+        print(f"test_ndcg50={test_ndcg50:.6f}")
 
     prepare.save_checkpoint(
         path=CHECKPOINT_PATH,
         model=model,
         optimizer=optimizer,
         step=step,
-        best_recall=valid_metrics["recall"],
+        best_metric=best_metric,
     )
 
     summary = {
@@ -333,6 +326,8 @@ def main() -> None:
         "model": "ComiRec-SA",
         "loss": "in_batch",
         "readout": "hard",
+        "primary_metric_key": "ndcg50",
+        "primary_metric_label": "NDCG@50",
         "device": str(device),
         "checkpoint_path": str(CHECKPOINT_PATH),
         "train_data": str(TRAIN_DATA),
@@ -366,12 +361,10 @@ def main() -> None:
             "examples_per_second": round((step * BATCH_SIZE) / max(training_seconds, 1e-8), 2),
             "final_loss": round(loss_value, 6),
             "final_ema_loss": round(ema_loss or loss_value, 6),
-            "valid_recall": round(valid_metrics["recall"], 6),
-            "valid_ndcg": round(valid_metrics["ndcg"], 6),
-            "valid_hitrate": round(valid_metrics["hitrate"], 6),
-            "test_recall": round(test_metrics["recall"], 6) if test_metrics is not None else None,
-            "test_ndcg": round(test_metrics["ndcg"], 6) if test_metrics is not None else None,
-            "test_hitrate": round(test_metrics["hitrate"], 6) if test_metrics is not None else None,
+            "valid_primary_metric": round(best_metric, 6),
+            "valid_ndcg50": round(valid_ndcg50, 6),
+            "test_primary_metric": round(test_ndcg50, 6) if test_ndcg50 is not None else None,
+            "test_ndcg50": round(test_ndcg50, 6) if test_ndcg50 is not None else None,
         },
     }
     prepare.append_jsonl(RUN_LOG_PATH, summary)

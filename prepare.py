@@ -328,7 +328,7 @@ def save_checkpoint(
     model: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
     step: int,
-    best_recall: float,
+    best_metric: float,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
@@ -336,7 +336,7 @@ def save_checkpoint(
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
             "step": step,
-            "best_recall": best_recall,
+            "best_metric": best_metric,
         },
         path,
     )
@@ -352,9 +352,12 @@ def load_checkpoint(
     model.load_state_dict(checkpoint["model_state_dict"])
     if optimizer is not None:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    best_metric = checkpoint.get("best_metric", checkpoint.get("best_recall"))
+    if best_metric is None:
+        raise KeyError("Checkpoint is missing best_metric.")
     return {
         "step": int(checkpoint["step"]),
-        "best_recall": float(checkpoint["best_recall"]),
+        "best_metric": float(best_metric),
     }
 
 
@@ -364,28 +367,15 @@ def append_jsonl(path: Path, payload: dict[str, object]) -> None:
         handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
 
 
-def compute_ranking_metrics(predicted_items: list[int], true_items: list[int]) -> dict[str, float]:
+def compute_ndcg_at_k(predicted_items: list[int], true_items: list[int]) -> float:
     true_item_set = set(true_items)
-    recall_hits = 0
     dcg = 0.0
     for rank, item_id in enumerate(predicted_items):
         if item_id in true_item_set:
-            recall_hits += 1
             dcg += 1.0 / torch.log2(torch.tensor(rank + 2.0)).item()
     ideal_hits = min(len(true_items), len(predicted_items))
     idcg = sum(1.0 / torch.log2(torch.tensor(rank + 2.0)).item() for rank in range(ideal_hits))
-    return {
-        "recall": recall_hits / max(len(true_items), 1),
-        "ndcg": (dcg / idcg) if recall_hits > 0 and idcg > 0 else 0.0,
-        "hitrate": 1.0 if recall_hits > 0 else 0.0,
-    }
-
-
-def average_metrics(metrics: list[dict[str, float]]) -> dict[str, float]:
-    if not metrics:
-        return {"recall": 0.0, "ndcg": 0.0, "hitrate": 0.0}
-    keys = metrics[0].keys()
-    return {key: sum(m[key] for m in metrics) / len(metrics) for key in keys}
+    return (dcg / idcg) if dcg > 0 and idcg > 0 else 0.0
 
 
 def mask_history_items(
@@ -425,17 +415,17 @@ def merge_topk_interests(
     return merged_rankings
 
 
-def evaluate_full_ranking(
+def evaluate_ndcg50(
     model: torch.nn.Module,
     samples_path: Path,
     batch_size: int,
     topk: int,
     device: torch.device,
     max_users: int | None = None,
-) -> dict[str, float]:
+) -> float:
     samples = load_samples(samples_path)
     iterator = EvalIterator(samples=samples, batch_size=batch_size)
-    metrics: list[dict[str, float]] = []
+    ndcg_values: list[float] = []
     processed_users = 0
 
     model.eval()
@@ -459,12 +449,12 @@ def evaluate_full_ranking(
             )
 
             for predicted_items, true_items in zip(ranked_items, batch.targets):
-                metrics.append(compute_ranking_metrics(predicted_items, true_items))
+                ndcg_values.append(compute_ndcg_at_k(predicted_items, true_items))
                 processed_users += 1
                 if max_users is not None and processed_users >= max_users:
-                    return average_metrics(metrics)
+                    return sum(ndcg_values) / len(ndcg_values) if ndcg_values else 0.0
 
-    return average_metrics(metrics)
+    return sum(ndcg_values) / len(ndcg_values) if ndcg_values else 0.0
 
 
 def build_parser() -> argparse.ArgumentParser:
