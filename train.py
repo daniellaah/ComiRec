@@ -38,7 +38,7 @@ TEST_MAX_USERS: int | None = 4096
 # ---------------------------------------------------------------------------
 
 # Run
-RUN_NAME = "comirec_sa"
+RUN_NAME = "comirec_sa_i6"
 WARMUP_STEPS = 5
 MAX_STEPS = 1_000_000
 LOG_EVERY = 20
@@ -46,7 +46,7 @@ LOG_EVERY = 20
 # Model architecture
 EMBEDDING_DIM = 64
 HIDDEN_SIZE = 64
-NUM_INTERESTS = 4
+NUM_INTERESTS = 6
 
 # Optimization
 BATCH_SIZE = 128
