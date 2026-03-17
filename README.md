@@ -1,4 +1,6 @@
-# autoresearch
+# ComiRec-with-Autoresearch
+
+![teaser](progress.png)
 
 This repository is a minimal `autoresearch`-style experiment for recommender systems.
 
