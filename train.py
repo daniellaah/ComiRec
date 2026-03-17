@@ -26,7 +26,7 @@ ITEM_MAP_FILE = prepare.ITEM_MAP_FILE
 METADATA_FILE = prepare.METADATA_FILE
 DEVICE = "mps"
 SEED = 55
-TRAIN_TIME_LIMIT_SECONDS = 5 * 60
+TRAIN_TIME_LIMIT_SECONDS = 10 * 60
 EVAL_TOPK = 50
 EVAL_BATCH_SIZE = 128
 VALID_MAX_USERS = 4096
@@ -38,7 +38,7 @@ TEST_MAX_USERS: int | None = 4096
 # ---------------------------------------------------------------------------
 
 # Run
-RUN_NAME = "comirec_sa_i8_h32_b64_lr6e4"
+RUN_NAME = "comirec_sa"
 WARMUP_STEPS = 5
 MAX_STEPS = 1_000_000
 LOG_EVERY = 20
