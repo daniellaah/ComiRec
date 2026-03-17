@@ -38,7 +38,7 @@ TEST_MAX_USERS: int | None = 4096
 # ---------------------------------------------------------------------------
 
 # Run
-RUN_NAME = "baseline_10m_i8_h32_b64_lr6e4"
+RUN_NAME = "run_10m_i8_h32_b64_lr4e4"
 WARMUP_STEPS = 5
 MAX_STEPS = 1_000_000
 LOG_EVERY = 20
@@ -50,7 +50,7 @@ NUM_INTERESTS = 8
 
 # Optimization
 BATCH_SIZE = 64
-LEARNING_RATE = 6e-4
+LEARNING_RATE = 4e-4
 
 # Output
 CHECKPOINT_PATH = Path(f"best_model/{RUN_NAME}.pt")
