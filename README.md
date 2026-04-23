@@ -1,78 +1,110 @@
-# ComiRec-with-Autoresearch
+# ComiRec
 
-![teaser](progress.png)
+![Python](https://img.shields.io/badge/python-3.13-blue)
+![PyTorch](https://img.shields.io/badge/pytorch-2.10-red)
+![Tests](https://img.shields.io/badge/tests-passing-brightgreen)
 
-This repository is a minimal `autoresearch`-style experiment for recommender systems.
+A learning-oriented PyTorch implementation of **ComiRec-SA** for sequential recommendation.
 
-The current fixed setup is:
+This repository is designed to be small, readable, and practical. It keeps the full training pipeline in plain PyTorch while avoiding framework-heavy abstractions, so you can study how a real recommendation model is built, trained, and evaluated.
 
-- dataset: Amazon Books
-- model family: `ComiRec-SA`
-- training loss: in-batch negatives
-- readout: hard
-- primary metric: `valid_ndcg50`
-- device protocol: `mps`
-- time budget: 5 minutes per run
+## Highlights
 
-The repository is intentionally small:
+- Plain PyTorch training loop with `zero_grad()`, `backward()`, and `step()`
+- Clear separation between preprocessing, datasets, model, training, and evaluation
+- Minimal project structure that is still close to a real-world repository
+- Tests covering preprocessing, data loading, model forward/backward, and train/eval flow
 
-- `prepare.py`
-  - fixed data preparation
-  - final dataset generation
-  - dataloading
-  - checkpoint helpers
-  - evaluation via `evaluate_ndcg50`
-  - treat this file as stable infrastructure
-- `train.py`
-  - the main experiment file
-  - model architecture
-  - optimizer
-  - training loop
-  - the hyperparameter block at the top is the main place to edit
-- `program.md`
-  - instructions for an autonomous research agent
-- `pyproject.toml`
-  - dependencies only
+## What This Repo Contains
 
-## Prepare
+- **Model**: `ComiRec-SA`
+- **Dataset**: Amazon Books
+- **Task**: sequential recommendation
+- **Training objective**: in-batch softmax negatives
+- **Primary evaluation metric**: `NDCG@50`
 
-Prepare the final datasets:
+## Repository Layout
 
-```bash
-uv run python prepare.py
+```text
+comirec/
+  configs.py
+  data.py
+  eval.py
+  model.py
+  prepare.py
+  train.py
+  util.py
+tests/
 ```
 
-This writes the fixed experiment inputs to `data/processed/`:
+- [`comirec/model.py`](comirec/model.py): model definition and loss
+- [`comirec/prepare.py`](comirec/prepare.py): raw data preprocessing and processed dataset export
+- [`comirec/data.py`](comirec/data.py): `SequenceDataset`, batch collation, and `DataLoader`
+- [`comirec/train.py`](comirec/train.py): training loop and checkpoint saving
+- [`comirec/eval.py`](comirec/eval.py): offline evaluation
+- [`comirec/configs.py`](comirec/configs.py): runtime configuration
+- [`tests/`](tests): smoke tests for the full pipeline
 
-- `train.jsonl`
-- `valid.jsonl`
-- `test.jsonl`
-- `metadata.json`
-- `book_item_map.txt`
+## Quick Start
 
-Training data is fixed across runs:
-
-- each training user contributes one fixed training sample
-- the cutoff is chosen once in `prepare.py`
-- the seed is fixed
-
-## Train
-
-Run one experiment:
+### 1. Install
 
 ```bash
-uv run python train.py
+uv sync
 ```
 
-The training script follows the `autoresearch` pattern:
+### 2. Prepare Data
 
-- edit `train.py`
-- run for a fixed 5-minute budget
-- compare runs using `valid_ndcg50`
-- write a checkpoint to `best_model/`
-- append a structured run record to `tmp/runs.jsonl`
+```bash
+uv run python -m comirec.prepare
+```
 
-The key rule is:
+This generates:
 
-- `prepare.py` defines the fixed protocol
-- `train.py` is where experiments happen
+- `data/processed/train.jsonl`
+- `data/processed/valid.jsonl`
+- `data/processed/test.jsonl`
+- `data/processed/metadata.json`
+- `data/processed/book_item_map.txt`
+
+### 3. Train
+
+```bash
+uv run python -m comirec.train
+```
+
+Example:
+
+```bash
+uv run python -m comirec.train \
+  --device cpu \
+  --batch-size 16 \
+  --num-epochs 1 \
+  --valid-max-users 256
+```
+
+By default, training saves a checkpoint to:
+
+```text
+best_model/comirec.pt
+```
+
+### 4. Evaluate
+
+```bash
+uv run python -m comirec.eval --checkpoint-path best_model/comirec.pt
+```
+
+Evaluate the test split:
+
+```bash
+uv run python -m comirec.eval \
+  --checkpoint-path best_model/comirec.pt \
+  --split test
+```
+
+### 5. Run Tests
+
+```bash
+uv run pytest
+```

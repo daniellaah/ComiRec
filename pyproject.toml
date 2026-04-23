@@ -1,14 +1,15 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "comirec-autoresearch"
+name = "comirec"
 version = "0.1.0"
-description = "Minimal ComiRec-SA training repo"
+description = "Learning-oriented PyTorch ComiRec-SA project"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13,<3.14"
 dependencies = [
-    "matplotlib>=3.10.6",
-    "numpy>=2.3.3",
-    "pandas>=2.3.2",
-    "torch==2.7.*",
+    "torch==2.10.*",
 ]
 
 [dependency-groups]
@@ -16,3 +17,14 @@ dev = [
     "pytest>=9.0.2",
     "ruff>=0.15.6",
 ]
+
+[project.scripts]
+comirec-prepare = "comirec.prepare:main"
+comirec-train = "comirec.train:main"
+comirec-eval = "comirec.eval:main"
+
+[tool.setuptools]
+packages = ["comirec"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -2,6 +2,7 @@
 __pycache__/
 .pytest_cache/
 .ruff_cache/
+*.egg-info/
 
 *.pyc
 *.pyo
@@ -12,8 +13,5 @@ __pycache__/
 data/amazon_books/
 data/processed/
 
-# Experiment artifacts
+# Model checkpoints
 best_model/
-tmp/
-results.tsv
-run.log
