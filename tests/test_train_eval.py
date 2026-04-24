@@ -12,9 +12,12 @@ def test_training_and_eval_smoke(toy_data_config, tmp_path) -> None:
         seed=7,
         batch_size=2,
         learning_rate=1e-3,
-        num_epochs=1,
+        num_sampled=3,
+        max_steps=2,
+        test_every_steps=1,
+        patience=3,
         log_every=1,
-        eval_topk=3,
+        metric_ks=(3,),
         eval_batch_size=2,
         valid_max_users=2,
         run_test_eval=True,
@@ -38,7 +41,7 @@ def test_training_and_eval_smoke(toy_data_config, tmp_path) -> None:
             split="valid",
             device="cpu",
             batch_size=2,
-            topk=3,
+            metric_ks=(3,),
             max_users=2,
         ),
     )
@@ -49,10 +52,14 @@ def test_training_and_eval_smoke(toy_data_config, tmp_path) -> None:
             split="test",
             device="cpu",
             batch_size=2,
-            topk=3,
+            metric_ks=(3,),
             max_users=2,
         ),
     )
 
-    assert 0.0 <= valid_score <= 1.0
-    assert 0.0 <= test_score <= 1.0
+    assert 0.0 <= valid_score["recall@3"] <= 1.0
+    assert 0.0 <= valid_score["ndcg@3"] <= 1.0
+    assert 0.0 <= valid_score["hitrate@3"] <= 1.0
+    assert 0.0 <= test_score["recall@3"] <= 1.0
+    assert 0.0 <= test_score["ndcg@3"] <= 1.0
+    assert 0.0 <= test_score["hitrate@3"] <= 1.0

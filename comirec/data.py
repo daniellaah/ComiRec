@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -24,8 +25,6 @@ class EvalBatch:
 
 
 class SequenceDataset(Dataset[dict[str, Any]]):
-    """A single dataset class used by both training and evaluation loaders."""
-
     def __init__(self, samples: list[dict[str, Any]]) -> None:
         self.samples = samples
 
@@ -62,31 +61,58 @@ def load_dataset(samples_path: Path) -> SequenceDataset:
     return SequenceDataset(load_samples(samples_path))
 
 
-def collate_train_records(records: list[dict[str, Any]]) -> TrainBatch:
+def _pad_sequence(sequence: list[int], cutoff: int, maxlen: int, pad_value: int = 0) -> list[int]:
+    history = sequence[max(0, cutoff - maxlen) : cutoff]
+    if len(history) < maxlen:
+        history = history + [pad_value] * (maxlen - len(history))
+    return history
+
+
+def _history_mask(cutoff: int, sequence_length: int, maxlen: int) -> list[bool]:
+    history_length = min(cutoff, maxlen, sequence_length)
+    return [True] * history_length + [False] * (maxlen - history_length)
+
+
+def collate_train_records(
+    records: list[dict[str, Any]],
+    *,
+    maxlen: int,
+    rng: random.Random,
+) -> TrainBatch:
+    history_items: list[list[int]] = []
+    history_mask: list[list[bool]] = []
+    targets: list[int] = []
+
+    for record in records:
+        sequence = list(record["sequence"])
+        cutoff = rng.randrange(4, len(sequence))
+        history_items.append(_pad_sequence(sequence, cutoff, maxlen))
+        history_mask.append(_history_mask(cutoff, len(sequence), maxlen))
+        targets.append(sequence[cutoff])
+
     return TrainBatch(
-        history_items=torch.tensor(
-            [record["history_items"] for record in records],
-            dtype=torch.long,
-        ),
-        history_mask=torch.tensor(
-            [record["history_mask"] for record in records],
-            dtype=torch.float32,
-        ),
-        targets=torch.tensor([record["target"] for record in records], dtype=torch.long),
+        history_items=torch.tensor(history_items, dtype=torch.long),
+        history_mask=torch.tensor(history_mask, dtype=torch.float32),
+        targets=torch.tensor(targets, dtype=torch.long),
     )
 
 
-def collate_eval_records(records: list[dict[str, Any]]) -> EvalBatch:
+def collate_eval_records(records: list[dict[str, Any]], *, maxlen: int) -> EvalBatch:
+    history_items: list[list[int]] = []
+    history_mask: list[list[bool]] = []
+    targets: list[list[int]] = []
+
+    for record in records:
+        sequence = list(record["sequence"])
+        cutoff = int(len(sequence) * 0.8)
+        history_items.append(_pad_sequence(sequence, cutoff, maxlen))
+        history_mask.append(_history_mask(cutoff, len(sequence), maxlen))
+        targets.append(sequence[cutoff:])
+
     return EvalBatch(
-        history_items=torch.tensor(
-            [record["history_items"] for record in records],
-            dtype=torch.long,
-        ),
-        history_mask=torch.tensor(
-            [record["history_mask"] for record in records],
-            dtype=torch.float32,
-        ),
-        targets=[list(record["targets"]) for record in records],
+        history_items=torch.tensor(history_items, dtype=torch.long),
+        history_mask=torch.tensor(history_mask, dtype=torch.float32),
+        targets=targets,
     )
 
 
@@ -94,24 +120,25 @@ def create_train_loader(
     samples_path: Path,
     batch_size: int,
     seed: int,
+    maxlen: int,
     num_workers: int = 0,
 ) -> DataLoader[dict[str, Any]]:
-    generator = torch.Generator().manual_seed(seed)
     dataset = load_dataset(samples_path)
+    rng = random.Random(seed)
     return DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=True,
         drop_last=True,
-        generator=generator,
         num_workers=num_workers,
-        collate_fn=collate_train_records,
+        collate_fn=lambda records: collate_train_records(records, maxlen=maxlen, rng=rng),
     )
 
 
 def create_eval_loader(
     samples_path: Path,
     batch_size: int,
+    maxlen: int,
     num_workers: int = 0,
 ) -> DataLoader[dict[str, Any]]:
     dataset = load_dataset(samples_path)
@@ -120,5 +147,5 @@ def create_eval_loader(
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        collate_fn=collate_eval_records,
+        collate_fn=lambda records: collate_eval_records(records, maxlen=maxlen),
     )

@@ -20,14 +20,14 @@ def _write_processed_dataset(root: Path) -> DataConfig:
     processed.mkdir(parents=True, exist_ok=True)
 
     train_rows = [
-        {"history_items": [0, 1, 2, 3], "history_mask": [False, True, True, True], "target": 4},
-        {"history_items": [0, 2, 3, 4], "history_mask": [False, True, True, True], "target": 5},
-        {"history_items": [1, 2, 4, 5], "history_mask": [True, True, True, True], "target": 6},
-        {"history_items": [2, 3, 5, 6], "history_mask": [True, True, True, True], "target": 7},
+        {"user_id": "u1", "sequence": [1, 2, 3, 4, 5]},
+        {"user_id": "u2", "sequence": [2, 3, 4, 5, 6]},
+        {"user_id": "u3", "sequence": [1, 3, 4, 6, 7]},
+        {"user_id": "u4", "sequence": [2, 4, 5, 6, 7]},
     ]
     eval_rows = [
-        {"history_items": [0, 1, 2, 3], "history_mask": [False, True, True, True], "targets": [4, 5]},
-        {"history_items": [0, 2, 3, 4], "history_mask": [False, True, True, True], "targets": [5, 6]},
+        {"user_id": "u5", "sequence": [1, 2, 3, 4, 5]},
+        {"user_id": "u6", "sequence": [2, 3, 4, 5, 6]},
     ]
 
     _write_jsonl(processed / "train.jsonl", train_rows)
@@ -41,10 +41,11 @@ def _write_processed_dataset(root: Path) -> DataConfig:
     with (processed / "metadata.json").open("w", encoding="utf-8") as handle:
         json.dump(
             {
+                "data_format_version": 2,
                 "num_items": 8,
-                "num_train_samples": len(train_rows),
-                "num_valid_samples": len(eval_rows),
-                "num_test_samples": len(eval_rows),
+                "num_train_users": len(train_rows),
+                "num_valid_users": len(eval_rows),
+                "num_test_users": len(eval_rows),
                 "maxlen": 4,
                 "min_count": 2,
                 "seed": 7,

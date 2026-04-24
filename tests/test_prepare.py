@@ -47,3 +47,8 @@ def test_prepare_books_creates_processed_files(tmp_path) -> None:
     assert data_config.test_samples_path.exists()
     assert data_config.item_map_path.exists()
     assert data_config.metadata_path.exists()
+
+    with data_config.metadata_path.open("r", encoding="utf-8") as handle:
+        metadata = json.load(handle)
+    assert metadata["data_format_version"] == 2
+    assert metadata["padding_side"] == "right"

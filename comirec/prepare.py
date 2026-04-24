@@ -4,6 +4,7 @@ import json
 import random
 from collections import Counter, defaultdict
 from pathlib import Path
+from typing import Any
 
 from .configs import DataConfig, parse_prepare_args
 
@@ -39,13 +40,13 @@ def build_user_sequences(
 ) -> dict[str, list[int]]:
     sequences: dict[str, list[int]] = {}
     for user_id, interactions in users.items():
-        mapped = [
+        mapped_sequence = [
             item_map[item_id]
             for item_id, _timestamp in sorted(interactions, key=lambda pair: pair[1])
             if item_id in item_map
         ]
-        if len(mapped) >= min_count:
-            sequences[user_id] = mapped
+        if len(mapped_sequence) >= min_count:
+            sequences[user_id] = mapped_sequence
     return sequences
 
 
@@ -61,70 +62,33 @@ def split_users(user_ids: list[str], seed: int) -> tuple[list[str], list[str], l
     )
 
 
-def export_map(path: Path, mapping: dict[str, int]) -> None:
+def export_item_map(path: Path, item_map: dict[str, int]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
-        for key, value in mapping.items():
-            handle.write(f"{key},{value}\n")
+        for raw_item_id, mapped_item_id in item_map.items():
+            handle.write(f"{raw_item_id},{mapped_item_id}\n")
 
 
-def save_samples(path: Path, payload: list[dict[str, object]]) -> None:
+def save_samples(path: Path, payload: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         for record in payload:
             handle.write(json.dumps(record, ensure_ascii=True) + "\n")
 
 
-def pad_history(sequence: list[int], cutoff: int, maxlen: int) -> tuple[list[int], list[bool]]:
-    history = sequence[max(0, cutoff - maxlen) : cutoff]
-    mask = [True] * len(history)
-    if len(history) < maxlen:
-        pad = maxlen - len(history)
-        history = [0] * pad + history
-        mask = [False] * pad + mask
-    return history, mask
-
-
-def build_train_samples(
-    train_users: list[str],
+def build_split_records(
+    user_ids: list[str],
     sequences: dict[str, list[int]],
-    maxlen: int,
-    seed: int,
-) -> list[dict[str, object]]:
-    rng = random.Random(seed)
-    samples: list[dict[str, object]] = []
-    for user_id in train_users:
-        sequence = sequences[user_id]
-        cutoff = rng.choice(range(4, len(sequence)))
-        padded_history, mask = pad_history(sequence, cutoff, maxlen)
-        samples.append(
-            {
-                "history_items": padded_history,
-                "history_mask": mask,
-                "target": sequence[cutoff],
-            }
-        )
-    return samples
-
-
-def build_eval_samples(
-    eval_users: list[str],
-    sequences: dict[str, list[int]],
-    maxlen: int,
-) -> list[dict[str, object]]:
-    samples: list[dict[str, object]] = []
-    for user_id in eval_users:
-        sequence = sequences[user_id]
-        cutoff = int(len(sequence) * 0.8)
-        padded_history, mask = pad_history(sequence, cutoff, maxlen)
-        samples.append(
-            {
-                "history_items": padded_history,
-                "history_mask": mask,
-                "targets": sequence[cutoff:],
-            }
-        )
-    return samples
+    *,
+    include_user_id: bool = False,
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for user_id in user_ids:
+        record: dict[str, Any] = {"sequence": sequences[user_id]}
+        if include_user_id:
+            record["user_id"] = user_id
+        records.append(record)
+    return records
 
 
 def prepare_books(data_config: DataConfig) -> dict[str, int | str]:
@@ -140,30 +104,28 @@ def prepare_books(data_config: DataConfig) -> dict[str, int | str]:
 
     kept_users = list(sequences)
     train_users, valid_users, test_users = split_users(kept_users, seed=data_config.split_seed)
-    export_map(data_config.item_map_path, item_map)
+    export_item_map(data_config.item_map_path, item_map)
 
-    train_samples = build_train_samples(
-        train_users,
-        sequences,
-        maxlen=data_config.maxlen,
-        seed=data_config.split_seed,
-    )
-    valid_samples = build_eval_samples(valid_users, sequences, maxlen=data_config.maxlen)
-    test_samples = build_eval_samples(test_users, sequences, maxlen=data_config.maxlen)
+    train_records = build_split_records(train_users, sequences, include_user_id=True)
+    valid_records = build_split_records(valid_users, sequences, include_user_id=True)
+    test_records = build_split_records(test_users, sequences, include_user_id=True)
 
-    save_samples(data_config.train_samples_path, train_samples)
-    save_samples(data_config.valid_samples_path, valid_samples)
-    save_samples(data_config.test_samples_path, test_samples)
+    save_samples(data_config.train_samples_path, train_records)
+    save_samples(data_config.valid_samples_path, valid_records)
+    save_samples(data_config.test_samples_path, test_records)
 
     metadata = {
+        "data_format_version": 2,
         "num_items": len(item_map) + 1,
-        "num_train_samples": len(train_samples),
-        "num_valid_samples": len(valid_samples),
-        "num_test_samples": len(test_samples),
+        "num_train_users": len(train_records),
+        "num_valid_users": len(valid_records),
+        "num_test_users": len(test_records),
         "maxlen": data_config.maxlen,
         "min_count": data_config.min_count,
         "seed": data_config.split_seed,
-        "train_cutoff_strategy": "one_fixed_random_cutoff_per_user",
+        "padding_side": "right",
+        "train_cutoff_strategy": "dynamic_random_cutoff_per_user_access",
+        "eval_cutoff_strategy": "fixed_80_20_per_user",
     }
     with data_config.metadata_path.open("w", encoding="utf-8") as handle:
         json.dump(metadata, handle, indent=2, ensure_ascii=True)
@@ -176,24 +138,11 @@ def prepare_books(data_config: DataConfig) -> dict[str, int | str]:
         "train_users": len(train_users),
         "valid_users": len(valid_users),
         "test_users": len(test_users),
-        "train_samples": metadata["num_train_samples"],
-        "valid_samples": metadata["num_valid_samples"],
-        "test_samples": metadata["num_test_samples"],
+        "train_records": metadata["num_train_users"],
+        "valid_records": metadata["num_valid_users"],
+        "test_records": metadata["num_test_users"],
         "output_dir": str(data_config.processed_data_dir),
     }
-
-
-def ensure_prepared(data_config: DataConfig) -> None:
-    required = (
-        data_config.train_samples_path,
-        data_config.valid_samples_path,
-        data_config.test_samples_path,
-        data_config.item_map_path,
-        data_config.metadata_path,
-    )
-    if all(path.exists() for path in required):
-        return
-    prepare_books(data_config)
 
 
 def main(argv: list[str] | None = None) -> None:

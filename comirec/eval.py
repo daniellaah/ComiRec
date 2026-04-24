@@ -11,6 +11,19 @@ from .model import build_model
 from .util import load_checkpoint, resolve_device
 
 
+def compute_recall_at_k(predicted_items: list[int], true_items: list[int]) -> float:
+    if not true_items:
+        return 0.0
+    true_item_set = set(true_items)
+    hits = sum(1 for item_id in predicted_items if item_id in true_item_set)
+    return hits / len(true_items)
+
+
+def compute_hit_rate_at_k(predicted_items: list[int], true_items: list[int]) -> float:
+    true_item_set = set(true_items)
+    return 1.0 if any(item_id in true_item_set for item_id in predicted_items) else 0.0
+
+
 def compute_ndcg_at_k(predicted_items: list[int], true_items: list[int]) -> float:
     true_item_set = set(true_items)
     dcg = 0.0
@@ -58,32 +71,32 @@ def merge_topk_interests(
     return merged_rankings
 
 
-def evaluate_ndcg50(
+def evaluate_ranking_metrics(
     model: torch.nn.Module,
     samples_path: Path,
     batch_size: int,
-    topk: int,
+    metric_ks: tuple[int, ...],
     device: torch.device,
+    maxlen: int,
     max_users: int | None = None,
-) -> float:
-    loader = create_eval_loader(samples_path=samples_path, batch_size=batch_size)
-    ndcg_values: list[float] = []
+) -> dict[str, float]:
+    loader = create_eval_loader(samples_path=samples_path, batch_size=batch_size, maxlen=maxlen)
+    topk_values = tuple(sorted(set(metric_ks)))
+    max_topk = max(topk_values)
+    metric_totals: dict[str, float] = {}
     processed_users = 0
 
     model.eval()
     with torch.no_grad():
         for batch in loader:
-            interest_embeddings = model(
-                batch.history_items.to(device),
-                batch.history_mask.to(device),
-            )
+            interest_embeddings = model(batch.history_items.to(device), batch.history_mask.to(device))
             item_scores = model.score_all_items(interest_embeddings)
             item_scores = mask_history_items(
                 item_scores=item_scores,
                 history_items=batch.history_items.to(device),
                 history_mask=batch.history_mask.to(device),
             )
-            effective_topk = min(topk, item_scores.size(-1))
+            effective_topk = min(max_topk, item_scores.size(-1))
             top_scores, top_item_ids = torch.topk(item_scores, k=effective_topk, dim=-1)
             ranked_items = merge_topk_interests(
                 top_item_ids=top_item_ids.cpu(),
@@ -92,12 +105,30 @@ def evaluate_ndcg50(
             )
 
             for predicted_items, true_items in zip(ranked_items, batch.targets):
-                ndcg_values.append(compute_ndcg_at_k(predicted_items, true_items))
+                for k in topk_values:
+                    truncated_predictions = predicted_items[: min(k, len(predicted_items))]
+                    metric_totals[f"recall@{k}"] = metric_totals.get(f"recall@{k}", 0.0) + (
+                        compute_recall_at_k(truncated_predictions, true_items)
+                    )
+                    metric_totals[f"ndcg@{k}"] = metric_totals.get(f"ndcg@{k}", 0.0) + (
+                        compute_ndcg_at_k(truncated_predictions, true_items)
+                    )
+                    metric_totals[f"hitrate@{k}"] = metric_totals.get(f"hitrate@{k}", 0.0) + (
+                        compute_hit_rate_at_k(truncated_predictions, true_items)
+                    )
                 processed_users += 1
                 if max_users is not None and processed_users >= max_users:
-                    return sum(ndcg_values) / len(ndcg_values) if ndcg_values else 0.0
+                    return {
+                        metric_name: value / processed_users
+                        for metric_name, value in metric_totals.items()
+                    }
 
-    return sum(ndcg_values) / len(ndcg_values) if ndcg_values else 0.0
+    if processed_users == 0:
+        return {f"{metric}@{k}": 0.0 for k in topk_values for metric in ("recall", "ndcg", "hitrate")}
+    return {
+        metric_name: value / processed_users
+        for metric_name, value in metric_totals.items()
+    }
 
 
 def _resolve_split_path(data_config: DataConfig, split: str) -> Path:
@@ -115,7 +146,7 @@ def _checkpoint_model_config(checkpoint: dict[str, Any]) -> ModelConfig:
     return ModelConfig(**payload)
 
 
-def evaluate_split(data_config: DataConfig, eval_config: EvalConfig) -> float:
+def evaluate_split(data_config: DataConfig, eval_config: EvalConfig) -> dict[str, float]:
     device = resolve_device(eval_config.device)
     checkpoint = load_checkpoint(eval_config.checkpoint_path, map_location=device)
     model_config = _checkpoint_model_config(checkpoint)
@@ -127,12 +158,13 @@ def evaluate_split(data_config: DataConfig, eval_config: EvalConfig) -> float:
     ).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
 
-    score = evaluate_ndcg50(
+    score = evaluate_ranking_metrics(
         model=model,
         samples_path=_resolve_split_path(data_config, eval_config.split),
         batch_size=eval_config.batch_size,
-        topk=eval_config.topk,
+        metric_ks=eval_config.metric_ks,
         device=device,
+        maxlen=int(metadata["maxlen"]),
         max_users=eval_config.max_users,
     )
     return score
@@ -140,8 +172,13 @@ def evaluate_split(data_config: DataConfig, eval_config: EvalConfig) -> float:
 
 def main(argv: list[str] | None = None) -> None:
     eval_config, data_config = parse_eval_args(argv)
-    score = evaluate_split(data_config=data_config, eval_config=eval_config)
-    print(f"{eval_config.split}_ndcg{eval_config.topk}={score:.6f}")
+    metrics = evaluate_split(data_config=data_config, eval_config=eval_config)
+    ordered_items = sorted(
+        metrics.items(),
+        key=lambda item: (int(item[0].split("@", 1)[1]), item[0].split("@", 1)[0]),
+    )
+    for metric_name, value in ordered_items:
+        print(f"{eval_config.split}_{metric_name.replace('@', '')}={value:.6f}")
 
 
 if __name__ == "__main__":

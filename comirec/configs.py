@@ -29,7 +29,7 @@ class DataConfig:
     raw_data_dir: Path = PROJECT_ROOT / "data" / "amazon_books"
     processed_data_dir: Path = PROJECT_ROOT / "data" / "processed"
     min_count: int = 5
-    split_seed: int = 55
+    split_seed: int = 1230
     maxlen: int = 20
 
     @property
@@ -60,8 +60,8 @@ class DataConfig:
 @dataclass(slots=True)
 class ModelConfig:
     embedding_dim: int = 64
-    hidden_size: int = 32
-    num_interests: int = 8
+    hidden_size: int = 64
+    num_interests: int = 4
     padding_idx: int = 0
 
 
@@ -69,11 +69,15 @@ class ModelConfig:
 class TrainConfig:
     device: str = "auto"
     seed: int = 55
-    batch_size: int = 48
-    learning_rate: float = 5e-4
-    num_epochs: int = 1
+    batch_size: int = 128
+    learning_rate: float = 1e-3
+    num_sampled: int = 10
+    max_iter_k: int = 1000
+    max_steps: int | None = None
+    test_every_steps: int = 1000
+    patience: int = 50
     log_every: int = 20
-    eval_topk: int = 50
+    metric_ks: tuple[int, ...] = (20, 50)
     eval_batch_size: int = 128
     valid_max_users: int | None = 4096
     run_test_eval: bool = False
@@ -87,7 +91,7 @@ class EvalConfig:
     split: str = "valid"
     device: str = "auto"
     batch_size: int = 128
-    topk: int = 50
+    metric_ks: tuple[int, ...] = (20, 50)
     max_users: int | None = 4096
 
 
@@ -112,9 +116,19 @@ def build_train_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=train_defaults.seed)
     parser.add_argument("--batch-size", type=int, default=train_defaults.batch_size)
     parser.add_argument("--learning-rate", type=float, default=train_defaults.learning_rate)
-    parser.add_argument("--num-epochs", type=int, default=train_defaults.num_epochs)
+    parser.add_argument("--num-sampled", type=int, default=train_defaults.num_sampled)
+    parser.add_argument("--max-iter-k", type=int, default=train_defaults.max_iter_k)
+    parser.add_argument("--max-steps", type=_optional_int, default=train_defaults.max_steps)
+    parser.add_argument("--test-every-steps", type=int, default=train_defaults.test_every_steps)
+    parser.add_argument("--patience", type=int, default=train_defaults.patience)
     parser.add_argument("--log-every", type=int, default=train_defaults.log_every)
-    parser.add_argument("--eval-topk", type=int, default=train_defaults.eval_topk)
+    parser.add_argument(
+        "--metric-k",
+        type=int,
+        action="append",
+        dest="metric_ks",
+        default=None,
+    )
     parser.add_argument("--eval-batch-size", type=int, default=train_defaults.eval_batch_size)
     parser.add_argument("--valid-max-users", type=_optional_int, default=train_defaults.valid_max_users)
     parser.add_argument("--run-test-eval", type=_bool_flag, default=train_defaults.run_test_eval)
@@ -141,7 +155,13 @@ def build_eval_parser() -> argparse.ArgumentParser:
     parser.add_argument("--split", choices=("valid", "test"), default="valid")
     parser.add_argument("--device", default="auto")
     parser.add_argument("--batch-size", type=int, default=128)
-    parser.add_argument("--topk", type=int, default=50)
+    parser.add_argument(
+        "--metric-k",
+        type=int,
+        action="append",
+        dest="metric_ks",
+        default=None,
+    )
     parser.add_argument("--max-users", type=_optional_int, default=4096)
     parser.add_argument("--processed-data-dir", type=Path, default=data_defaults.processed_data_dir)
     return parser
@@ -161,15 +181,20 @@ def parse_prepare_args(argv: list[str] | None = None) -> DataConfig:
 def parse_train_args(
     argv: list[str] | None = None,
 ) -> tuple[TrainConfig, DataConfig, ModelConfig]:
+    train_defaults = TrainConfig()
     args = build_train_parser().parse_args(argv)
     train_config = TrainConfig(
         device=args.device,
         seed=args.seed,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
-        num_epochs=args.num_epochs,
+        num_sampled=args.num_sampled,
+        max_iter_k=args.max_iter_k,
+        max_steps=args.max_steps,
+        test_every_steps=args.test_every_steps,
+        patience=args.patience,
         log_every=args.log_every,
-        eval_topk=args.eval_topk,
+        metric_ks=tuple(args.metric_ks or train_defaults.metric_ks),
         eval_batch_size=args.eval_batch_size,
         valid_max_users=args.valid_max_users,
         run_test_eval=args.run_test_eval,
@@ -199,7 +224,7 @@ def parse_eval_args(argv: list[str] | None = None) -> tuple[EvalConfig, DataConf
         split=args.split,
         device=args.device,
         batch_size=args.batch_size,
-        topk=args.topk,
+        metric_ks=tuple(args.metric_ks or (20, 50)),
         max_users=args.max_users,
     )
     data_config = DataConfig(processed_data_dir=args.processed_data_dir)

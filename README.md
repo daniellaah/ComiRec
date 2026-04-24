@@ -12,6 +12,7 @@ This repository is designed to be small, readable, and practical. It keeps the f
 
 - Plain PyTorch training loop with `zero_grad()`, `backward()`, and `step()`
 - Clear separation between preprocessing, datasets, model, training, and evaluation
+- User-level sequence splits with dynamic training cutoffs and fixed 80/20 eval cutoffs
 - Minimal project structure that is still close to a real-world repository
 - Tests covering preprocessing, data loading, model forward/backward, and train/eval flow
 
@@ -20,8 +21,8 @@ This repository is designed to be small, readable, and practical. It keeps the f
 - **Model**: `ComiRec-SA`
 - **Dataset**: Amazon Books
 - **Task**: sequential recommendation
-- **Training objective**: in-batch softmax negatives
-- **Primary evaluation metric**: `NDCG@50`
+- **Training objective**: sampled softmax with log-uniform negative sampling
+- **Primary evaluation metrics**: `Recall`, `NDCG`, `HitRate` at `@20` and `@50`
 
 ## Repository Layout
 
@@ -67,21 +68,37 @@ This generates:
 - `data/processed/metadata.json`
 - `data/processed/book_item_map.txt`
 
+The processed files store full user sequences. Training samples are drawn dynamically from those sequences, and histories are right-padded to match the official TensorFlow data iterator.
+The default user split seed is `1230`, matching the official preprocessing script.
+The default `--num-sampled 10` follows the official implementation's convention of 10 negatives per example, so a batch of 128 users samples up to 1280 negative classes.
+
 ### 3. Train
 
 ```bash
 uv run python -m comirec.train
 ```
 
+Training expects `data/processed/` to already exist. Run the prepare step explicitly before training.
+
 Example:
 
 ```bash
 uv run python -m comirec.train \
   --device cpu \
-  --batch-size 16 \
-  --num-epochs 1 \
-  --valid-max-users 256
+  --max-steps 5000 \
+  --test-every-steps 1000 \
+  --patience 50 \
+  --metric-k 20 \
+  --metric-k 50 \
+  --run-test-eval true
 ```
+
+The training loop is step-driven to match the official TensorFlow implementation more closely:
+
+- it validates every `--test-every-steps`
+- saves the best checkpoint by `Recall@50`
+- stops early after `--patience` non-improving validations
+- falls back to `--max-iter-k * 1000` total steps when `--max-steps` is not set
 
 By default, training saves a checkpoint to:
 
@@ -106,5 +123,5 @@ uv run python -m comirec.eval \
 ### 5. Run Tests
 
 ```bash
-uv run pytest
+uv run --group dev python -m pytest
 ```
